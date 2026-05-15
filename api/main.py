@@ -15,6 +15,7 @@ from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
 from src.db.qdrant_store import get_client, ensure_collection
+from src.ingest.embedder import _get_model
 from src.query.retriever import format_context, retrieve
 from src.query.xml_parser import parse_xml
 
@@ -53,8 +54,8 @@ class QueryResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    client = get_client()
-    ensure_collection(client)
+    ensure_collection(get_client())
+    _get_model()  # pre-load BGE-M3 so first /query isn't slow
     yield
 
 
