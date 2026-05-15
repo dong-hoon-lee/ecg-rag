@@ -14,8 +14,10 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel, Field
 
+from config import LLM_BACKEND
 from src.db.qdrant_store import get_client, ensure_collection
 from src.ingest.embedder import _get_model
+from src.llm.generator import generate
 from src.query.retriever import format_context, retrieve
 from src.query.xml_parser import parse_xml
 
@@ -46,6 +48,7 @@ class QueryResponse(BaseModel):
     natural_query: str
     results: list[ChunkResult]
     context: str
+    answer: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -86,6 +89,9 @@ def query(req: QueryRequest):
         audience_level=req.audience_level,
     )
 
+    context = format_context(results)
+    answer = generate(context, ctx.natural_query) if LLM_BACKEND == "vllm" else None
+
     return QueryResponse(
         diagnoses=ctx.diagnoses,
         findings=ctx.findings,
@@ -101,5 +107,6 @@ def query(req: QueryRequest):
             )
             for i, r in enumerate(results, 1)
         ],
-        context=format_context(results),
+        context=context,
+        answer=answer,
     )

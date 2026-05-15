@@ -9,6 +9,11 @@ KG_GRAPH_PATH = Path(__file__).parent / "kg_storage" / "graph.json"
 KG_TRIPLES_RAW_PATH = Path(__file__).parent / "kg_storage" / "triples_raw.jsonl"
 KG_MODEL_ID = "google/medgemma-4b-it"
 
+# LLM Backend ("vllm" | "none")
+LLM_BACKEND = "vllm"
+VLLM_BASE_URL = "http://localhost:8080/v1"
+VLLM_MODEL = "google/medgemma-4b-it"
+
 EMBEDDING_DIM = 1024  # BGE-M3 dense output
 
 # Chunking targets (in tokens, approximated as words)
