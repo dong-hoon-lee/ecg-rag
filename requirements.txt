@@ -1,0 +1,8 @@
+pymupdf>=1.24
+qdrant-client>=1.9
+FlagEmbedding>=1.2
+lxml>=5.0
+numpy>=1.24
+fastapi>=0.111
+uvicorn[standard]>=0.29
+openai>=1.30
