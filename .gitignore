@@ -20,6 +20,7 @@ env/
 data/*.pdf
 qdrant_storage/
 kg_storage/
+graphify-out/
 
 # Jupyter
 .ipynb_checkpoints/
