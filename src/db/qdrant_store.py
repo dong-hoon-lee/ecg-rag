@@ -14,9 +14,15 @@ from qdrant_client.models import (
 from config import COLLECTION_NAME, EMBEDDING_DIM, QDRANT_PATH
 
 
+_client: QdrantClient | None = None
+
+
 def get_client() -> QdrantClient:
-    QDRANT_PATH.mkdir(parents=True, exist_ok=True)
-    return QdrantClient(path=str(QDRANT_PATH))
+    global _client
+    if _client is None:
+        QDRANT_PATH.mkdir(parents=True, exist_ok=True)
+        _client = QdrantClient(path=str(QDRANT_PATH))
+    return _client
 
 
 def ensure_collection(client: QdrantClient) -> None:
