@@ -14,6 +14,19 @@ LLM_BACKEND = "vllm"
 VLLM_BASE_URL = "http://localhost:8080/v1"
 VLLM_MODEL = "google/medgemma-4b-it"
 
+# VLM for image description — needs a separate vision-capable vLLM server
+# Start with: vllm serve Qwen/Qwen2-VL-7B-Instruct --port 8081
+VLM_BACKEND: str = "vllm"  # "vllm" | "none"
+VLLM_VLM_BASE_URL: str = "http://localhost:8081/v1"
+VLLM_VLM_MODEL: str = "Qwen/Qwen2.5-VL-7B-Instruct"
+
+# Image filtering — skip decorative images smaller than these dimensions (pixels)
+IMAGE_MIN_WIDTH: int = 100
+IMAGE_MIN_HEIGHT: int = 100
+
+# Table processing — True: LLM summary via VLLM_MODEL, False: raw markdown stored as-is
+TABLE_LLM_SUMMARY: bool = True
+
 EMBEDDING_DIM = 1024  # BGE-M3 dense output
 
 # Chunking targets (in tokens, approximated as words)

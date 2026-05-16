@@ -1,4 +1,8 @@
-"""BGE-M3 dense embeddings with batched inference."""
+"""BGE-M3 dense embeddings with batched inference.
+
+Pinned to cuda:0 so FlagEmbedding uses single-device mode — avoids
+the multi-GPU spawn that produces empty sub-batches and crashes.
+"""
 
 from typing import Iterator
 import numpy as np
@@ -10,7 +14,7 @@ _model: BGEM3FlagModel | None = None
 def _get_model() -> BGEM3FlagModel:
     global _model
     if _model is None:
-        _model = BGEM3FlagModel("BAAI/bge-m3", use_fp16=True)
+        _model = BGEM3FlagModel("BAAI/bge-m3", use_fp16=True, devices=["cuda:0"])
     return _model
 
 
@@ -20,12 +24,14 @@ def embed_chunks(
 ) -> Iterator[dict]:
     """
     Adds 'embedding' (list[float]) to each chunk dict and yields it.
-    Processes in batches to avoid OOM on large corpora.
+    Skips chunks with empty content to prevent tokenizer errors.
     """
     model = _get_model()
 
-    for i in range(0, len(chunks), batch_size):
-        batch = chunks[i : i + batch_size]
+    valid = [c for c in chunks if c.get("content", "").strip()]
+
+    for i in range(0, len(valid), batch_size):
+        batch = valid[i : i + batch_size]
         texts = [c["content"] for c in batch]
         result = model.encode(texts, batch_size=batch_size, max_length=512)
         dense_vecs: np.ndarray = result["dense_vecs"]
