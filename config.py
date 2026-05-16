@@ -29,6 +29,12 @@ TABLE_LLM_SUMMARY: bool = True
 
 EMBEDDING_DIM = 1024  # BGE-M3 dense output
 
+# Cross-encoder re-ranker
+RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
+RERANKER_ENABLED: bool = True
+RETRIEVAL_TOP_K: int = 20   # candidates fetched from Qdrant before reranking
+RERANK_TOP_K: int = 5       # final results returned after reranking
+
 # Chunking targets (in tokens, approximated as words)
 CHUNK_TARGET_TOKENS = 500
 CHUNK_MAX_TOKENS = 700
