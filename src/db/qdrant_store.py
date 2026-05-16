@@ -25,6 +25,14 @@ def get_client() -> QdrantClient:
     return _client
 
 
+def drop_collection(client: QdrantClient) -> None:
+    """Delete the collection if it exists."""
+    try:
+        client.delete_collection(COLLECTION_NAME)
+    except Exception:
+        pass
+
+
 def ensure_collection(client: QdrantClient) -> None:
     existing = {c.name for c in client.get_collections().collections}
     if COLLECTION_NAME not in existing:
