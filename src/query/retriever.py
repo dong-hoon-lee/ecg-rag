@@ -1,10 +1,10 @@
-"""High-level retrieval: XML context → embedded query → Qdrant search → rerank."""
+"""High-level retrieval: XML context → embed → hybrid search → rerank."""
 
 from src.db.qdrant_store import get_client, search
 from src.ingest.embedder import embed_chunks
 from src.query.reranker import rerank
 from src.query.xml_parser import ECGQueryContext
-from config import RERANKER_ENABLED, RETRIEVAL_TOP_K, RERANK_TOP_K
+from config import HYBRID_ENABLED, RERANKER_ENABLED, RETRIEVAL_TOP_K, RERANK_TOP_K
 
 
 def retrieve(
@@ -14,17 +14,25 @@ def retrieve(
     language: str | None = None,
 ) -> list[dict]:
     """
-    Embed the natural query, fetch RETRIEVAL_TOP_K candidates from Qdrant,
-    then re-rank with a cross-encoder and return top_k results.
+    1. Embed the natural query (dense + sparse).
+    2. Hybrid search Qdrant with RRF fusion (or dense-only if HYBRID_ENABLED=False).
+    3. Re-rank candidates with cross-encoder and return top_k.
     """
     query_chunk = [{"id": "query", "content": ctx.natural_query}]
     embedded = list(embed_chunks(query_chunk, batch_size=1))
-    query_vector = embedded[0]["embedding"]
+    eq = embedded[0]
+
+    query_sparse = (
+        (eq["sparse_indices"], eq["sparse_values"])
+        if HYBRID_ENABLED and eq.get("sparse_indices")
+        else None
+    )
 
     client = get_client()
     candidates = search(
         client,
-        query_vector=query_vector,
+        query_vector=eq["embedding"],
+        query_sparse=query_sparse,
         top_k=RETRIEVAL_TOP_K if RERANKER_ENABLED else top_k,
         audience_level=audience_level,
         language=language,
@@ -39,7 +47,7 @@ def format_context(results: list[dict]) -> str:
     """Format retrieved chunks into a single LLM context string."""
     parts = []
     for i, r in enumerate(results, 1):
-        score_info = f"dense={r['score']:.3f}"
+        score_info = f"score={r['score']:.3f}"
         if "rerank_score" in r:
             score_info += f", rerank={r['rerank_score']:.3f}"
         parts.append(

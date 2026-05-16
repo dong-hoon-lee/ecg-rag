@@ -1,17 +1,22 @@
-"""Qdrant local collection: create, upsert, and search."""
+"""Qdrant local collection: create, upsert, and hybrid search."""
 
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     Distance,
     FieldCondition,
     Filter,
+    Fusion,
+    FusionQuery,
     MatchValue,
     PointStruct,
-    Query,
+    Prefetch,
+    SparseIndexParams,
+    SparseVector,
+    SparseVectorParams,
     VectorParams,
 )
 
-from config import COLLECTION_NAME, EMBEDDING_DIM, QDRANT_PATH
+from config import COLLECTION_NAME, EMBEDDING_DIM, HYBRID_ENABLED, QDRANT_PATH
 
 
 _client: QdrantClient | None = None
@@ -36,11 +41,15 @@ def drop_collection(client: QdrantClient) -> None:
 def ensure_collection(client: QdrantClient) -> None:
     existing = {c.name for c in client.get_collections().collections}
     if COLLECTION_NAME not in existing:
+        sparse_cfg = (
+            {"sparse": SparseVectorParams(index=SparseIndexParams(on_disk=False))}
+            if HYBRID_ENABLED else {}
+        )
         client.create_collection(
             collection_name=COLLECTION_NAME,
-            vectors_config=VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE),
+            vectors_config={"dense": VectorParams(size=EMBEDDING_DIM, distance=Distance.COSINE)},
+            sparse_vectors_config=sparse_cfg,
         )
-        # Payload indexes only work on server-mode Qdrant; silently skip for local mode
         try:
             for field in ("source_book", "language", "audience_level", "content_type"):
                 client.create_payload_index(
@@ -53,29 +62,39 @@ def ensure_collection(client: QdrantClient) -> None:
 
 
 def upsert_chunks(client: QdrantClient, chunks: list[dict]) -> None:
-    """Bulk-upsert embedded chunks. Each chunk must have 'id' and 'embedding'."""
-    points = [
-        PointStruct(
-            id=c["id"],
-            vector=c["embedding"],
-            payload={k: v for k, v in c.items() if k not in ("id", "embedding")},
+    """Bulk-upsert embedded chunks. Each chunk must have 'id', 'embedding',
+    and (when HYBRID_ENABLED) 'sparse_indices' + 'sparse_values'."""
+    payload_exclude = {"id", "embedding", "sparse_indices", "sparse_values"}
+    points = []
+    for c in chunks:
+        vector: dict = {"dense": c["embedding"]}
+        if HYBRID_ENABLED and c.get("sparse_indices"):
+            vector["sparse"] = SparseVector(
+                indices=c["sparse_indices"],
+                values=c["sparse_values"],
+            )
+        points.append(
+            PointStruct(
+                id=c["id"],
+                vector=vector,
+                payload={k: v for k, v in c.items() if k not in payload_exclude},
+            )
         )
-        for c in chunks
-    ]
     client.upsert(collection_name=COLLECTION_NAME, points=points)
 
 
 def search(
     client: QdrantClient,
     query_vector: list[float],
+    query_sparse: tuple[list[int], list[float]] | None = None,
     top_k: int = 5,
     audience_level: str | None = None,
     language: str | None = None,
     content_type: str | None = None,
 ) -> list[dict]:
     """
-    Dense cosine similarity search with optional metadata filters.
-    Returns list of {score, content, metadata} dicts.
+    Hybrid search (dense + sparse RRF) when HYBRID_ENABLED and query_sparse
+    is provided; falls back to dense-only otherwise.
     """
     must = []
     if audience_level:
@@ -84,17 +103,34 @@ def search(
         must.append(FieldCondition(key="language", match=MatchValue(value=language)))
     if content_type:
         must.append(FieldCondition(key="content_type", match=MatchValue(value=content_type)))
-
     query_filter = Filter(must=must) if must else None
 
-    # qdrant-client >= 1.14 uses query_points instead of search
-    response = client.query_points(
-        collection_name=COLLECTION_NAME,
-        query=query_vector,
-        query_filter=query_filter,
-        limit=top_k,
-        with_payload=True,
-    )
+    if HYBRID_ENABLED and query_sparse is not None:
+        sparse_indices, sparse_values = query_sparse
+        response = client.query_points(
+            collection_name=COLLECTION_NAME,
+            prefetch=[
+                Prefetch(query=query_vector, using="dense", limit=top_k * 3),
+                Prefetch(
+                    query=SparseVector(indices=sparse_indices, values=sparse_values),
+                    using="sparse",
+                    limit=top_k * 3,
+                ),
+            ],
+            query=FusionQuery(fusion=Fusion.RRF),
+            query_filter=query_filter,
+            limit=top_k,
+            with_payload=True,
+        )
+    else:
+        response = client.query_points(
+            collection_name=COLLECTION_NAME,
+            query=query_vector,
+            using="dense",
+            query_filter=query_filter,
+            limit=top_k,
+            with_payload=True,
+        )
 
     return [
         {

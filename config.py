@@ -29,6 +29,9 @@ TABLE_LLM_SUMMARY: bool = True
 
 EMBEDDING_DIM = 1024  # BGE-M3 dense output
 
+# Hybrid search (dense + sparse via BGE-M3 lexical weights, fused with RRF)
+HYBRID_ENABLED: bool = True
+
 # Cross-encoder re-ranker
 RERANKER_MODEL = "BAAI/bge-reranker-v2-m3"
 RERANKER_ENABLED: bool = True
